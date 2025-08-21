@@ -1,0 +1,85 @@
+// Arduino 2 - Smart Flood Control System
+
+
+#include<Servo.h>
+Servo drainageValve;
+
+void setup()
+{
+  pinMode(7, OUTPUT); 
+  pinMode(A1, INPUT);  
+  pinMode(A2, INPUT);  
+  drainageValve.attach(9); // Servo motor on pin 9
+  drainageValve.write(0);  // Valve closed initially
+  
+  Serial.begin(9600);
+  
+  digitalWrite(7, LOW); // Motor off initially
+  
+  Serial.println("Arduino 2 - Flood Control Started");
+  Serial.println("Components: Servo + TMP36 + DC Motor");
+}
+
+void loop()
+{
+  // Read water level data from Arduino 1
+  int analogValue = analogRead(A1);
+  int waterDistance = map(analogValue, 0, 255, 0, 200);
+  
+  // Read TMP36 temperature sensor
+  int tempReading = analogRead(A2);
+  float voltage = tempReading * (5.0 / 1023.0);
+  float temperature = (voltage - 0.5) * 100.0;
+  
+  // Display readings
+  Serial.print("Water Distance: ");
+  Serial.print(waterDistance);
+  Serial.println("cm");
+  Serial.print("Temperature: ");
+  Serial.print(temperature);
+  Serial.println("C");
+  
+  // Emergency flood response system
+  if(waterDistance <= 30) {
+    digitalWrite(7, HIGH); // Turn on water pump
+    drainageValve.write(90); // Open drainage valve (90 degrees)
+    Serial.println("EMERGENCY: Water pump activated!");
+    Serial.println("EMERGENCY: Drainage valve opened!");
+  }
+  else if(waterDistance > 50) {
+    digitalWrite(7, LOW); // Turn off water pump
+    drainageValve.write(0); // Close drainage valve (0 degrees)
+    Serial.println("Water pump deactivated - Normal level");
+    Serial.println("Drainage valve closed");
+  }
+  
+  // Temperature-based valve control
+  if(temperature > 35) {
+    drainageValve.write(45); // Partial opening for hot weather
+    Serial.println("High temperature - Partial valve opening");
+  }
+  else if(temperature < 10) {
+    drainageValve.write(180); // Full opening for cold weather (prevent freezing)
+    Serial.println("Low temperature - Full valve opening");
+  }
+  
+  // Status reporting
+  if(waterDistance > 70) {
+    Serial.println("Status: NORMAL WATER LEVEL");
+  }
+  else if(waterDistance > 30 && waterDistance <= 70) {
+    Serial.println("Status: WARNING WATER LEVEL");
+  }
+  else {
+    Serial.println("Status: CRITICAL FLOOD LEVEL");
+  }
+  
+  // Display servo position
+  Serial.print("Valve Position: ");
+  Serial.print(drainageValve.read());
+  Serial.println(" degrees");
+  
+  Serial.println("---");
+  
+  delay(1000);
+}
