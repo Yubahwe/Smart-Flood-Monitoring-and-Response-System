@@ -1,0 +1,164 @@
+
+// Warning starts at <150cm distance
+
+#include<LiquidCrystal.h>
+#include<SoftwareSerial.h>
+
+LiquidCrystal lcd(8,9,10,11,12,13);
+SoftwareSerial bluetooth(0, 1); // Using existing Bluetooth connection
+
+void setup()
+{
+  pinMode(2, OUTPUT);  // Buzzer
+  pinMode(3, OUTPUT);  // Ultrasonic Trig
+  pinMode(4, INPUT);   // Ultrasonic Echo
+  pinMode(5, OUTPUT);  // Red LED
+  pinMode(6, OUTPUT);  // Yellow LED  
+  pinMode(7, OUTPUT);  // Green LED
+  pinMode(A0, OUTPUT); // Communication to Arduino 2
+  
+  Serial.begin(9600);
+  bluetooth.begin(9600);
+  lcd.begin(16,2);
+  lcd.print("Flood Monitor");
+  lcd.setCursor(0,1);
+  lcd.print("Sensor Ready");
+  delay(2000);
+  lcd.clear();
+  
+  bluetooth.println("Arduino 1 - Water Monitor Ready");
+  Serial.println("Warning triggers at <150cm distance");
+}
+
+void loop()
+{
+  // Ultrasonic sensor reading
+  digitalWrite(3, LOW);
+  delay(2); 
+  digitalWrite(3, HIGH);
+  delay(10);
+  digitalWrite(3, LOW);
+  
+  int timetaken = pulseIn(4, HIGH);
+  int distance = timetaken * 0.034 / 2;
+  
+  // Handle sensor errors
+  if(distance == 0 || distance > 400) {
+    lcd.setCursor(0,0);
+    lcd.print("Sensor Error!   ");
+    lcd.setCursor(0,1);
+    lcd.print("Check Connection");
+    Serial.println("ERROR: No ultrasonic reading");
+    delay(1000);
+    return;
+  }
+  
+  // Send distance data to Arduino 2
+  int mappedDistance = map(constrain(distance, 0, 200), 0, 200, 0, 255);
+  analogWrite(A0, mappedDistance);
+  
+  // Display distance on LCD (Line 1)
+  lcd.setCursor(0,0);
+  lcd.print("Dist: ");
+  lcd.print(distance);
+  lcd.print("cm      ");
+  
+  // Water level logic and alerts - WARNING STARTS AT <150cm
+  if(distance >= 150) {
+    // Normal - No flood risk
+    digitalWrite(7, HIGH);  // Green LED
+    digitalWrite(6, LOW);   // Yellow LED off
+    digitalWrite(5, LOW);   // Red LED off
+    lcd.setCursor(0,1);
+    lcd.print("SAFE - No Flood ");
+    bluetooth.println("STATUS:SAFE");
+  }
+  else if(distance >= 70 && distance < 150) {
+    // Early Warning - Water detected but not dangerous
+    digitalWrite(7, LOW);   // Green LED off
+    digitalWrite(6, HIGH);  // Yellow LED
+    digitalWrite(5, LOW);   // Red LED off
+    lcd.setCursor(0,1);
+    lcd.print("EARLY WARNING   ");
+    bluetooth.println("STATUS:EARLY_WARNING");
+    
+    // Slow beep for early warning
+    tone(2, 400);
+    delay(150);
+    noTone(2);
+    delay(350);
+  }
+  else if(distance >= 30 && distance < 70) {
+    // Warning - Rising water level
+    digitalWrite(7, LOW);   // Green LED off
+    digitalWrite(6, HIGH);  // Yellow LED
+    digitalWrite(5, LOW);   // Red LED off
+    lcd.setCursor(0,1);
+    lcd.print("WARNING LEVEL   ");
+    bluetooth.println("STATUS:WARNING");
+    
+    // Medium beep for warning
+    tone(2, 500);
+    delay(100);
+    noTone(2);
+    delay(100);
+  }
+  else {
+    // Critical - Flood emergency
+    digitalWrite(7, LOW);   // Green LED off
+    digitalWrite(6, LOW);   // Yellow LED off
+    digitalWrite(5, HIGH);  // Red LED
+    lcd.setCursor(0,1);
+    lcd.print("CRITICAL FLOOD! ");
+    bluetooth.println("STATUS:CRITICAL");
+    
+    // Urgent beeping for critical
+    tone(2, 900);
+    delay(100);
+    noTone(2);
+    delay(100);
+  }
+  
+  // Handle Bluetooth commands
+  if (bluetooth.available()) {
+    String command = bluetooth.readString();
+    command.trim();
+    
+    if (command == "STATUS") {
+      bluetooth.print("DISTANCE:");
+      bluetooth.print(distance);
+      bluetooth.print("cm,WATER_LEVEL:");
+      bluetooth.print(getWaterLevel(distance));
+      bluetooth.print(",FLOOD_LEVEL:");
+      bluetooth.println(getFloodLevel(distance));
+    }
+    else if (command == "DISTANCE") {
+      bluetooth.print("DISTANCE:");
+      bluetooth.println(distance);
+    }
+  }
+  
+  // Send detailed serial data
+  Serial.print("Distance: ");
+  Serial.print(distance);
+  Serial.print("cm | Water Level: ");
+  Serial.print(getWaterLevel(distance));
+  Serial.print(" | Flood Level: ");
+  Serial.println(getFloodLevel(distance));
+  
+  delay(500);
+}
+
+String getWaterLevel(int distance) {
+  if(distance >= 150) return "NONE";
+  else if(distance >= 70) return "LOW";
+  else if(distance >= 30) return "MEDIUM";
+  else return "HIGH";
+}
+
+String getFloodLevel(int distance) {
+  if(distance >= 150) return "SAFE";
+  else if(distance >= 70) return "EARLY_WARNING";
+  else if(distance >= 30) return "WARNING";
+  else return "CRITICAL";
+}
